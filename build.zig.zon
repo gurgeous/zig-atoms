@@ -1,0 +1,7 @@
+.{
+    .fingerprint = 0xe532fe7b6467ecbc,
+    .minimum_zig_version = "0.15.2",
+    .name = .zig_atoms,
+    .paths = .{""},
+    .version = "0.1.0",
+}
