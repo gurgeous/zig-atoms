@@ -21,6 +21,36 @@ Zig Atoms is a collection of high quality, single-file libraries that can be dro
 
 Copy the .zig file into your project and use it directly. Atoms are maintained but not versioned. Have fun!
 
+### Mini Demo
+
+```zig
+// csv_read - parse a CSV file or buffer, also see sniffDelimiter
+const csv = try csv_read.read(alloc, file.reader(), ',');
+const first_row = csv.row(0);
+
+// natsort - sort strings the way humans expect
+std.mem.sortUnstable([]const u8, files, {}, struct {
+    fn lessThan(_: void, a: []const u8, b: []const u8) bool {
+        return natsort.natsort(a, b) == .lt;
+    }
+}.lessThan);
+
+// regex - match, scan, capture, etc
+var re = try regex.Regex.init(alloc, "(cat|d\\w+g)\\b", .{});
+const md = (try re.match("hotdog")) orelse unreachable;
+const animal = md.subexp(1).?;
+
+// sprintf - format with runtime width and padding using sprintf syntax
+const msg = try sprintf.sprintf(alloc, "%08b %-5s", .{ 13, ">" });
+
+// termbg - detect whether the terminal background is dark
+const dark = try termbg.isDark(alloc);
+
+// unicode - best-effort display width and truncation for common cases
+const width = unicode.displayWidth("A👍B");
+try unicode.truncate(&writer, "Hello 👍 world", 8);
+```
+
 ### Changelog
 
 - Mar 2026 - initial release
