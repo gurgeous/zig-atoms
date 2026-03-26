@@ -1,6 +1,4 @@
 [![test](https://github.com/gurgeous/zig-atoms/actions/workflows/ci.yml/badge.svg)](https://github.com/gurgeous/zig-atoms/actions/workflows/ci.yml)
-
-<img src="./logo.svg" width="60%">
   
 # Zig Atoms
   
