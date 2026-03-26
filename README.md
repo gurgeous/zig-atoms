@@ -26,7 +26,7 @@ Copy the .zig file into your project and use it directly. Atoms are maintained b
 ```zig
 // csv_read - parse a CSV file or buffer, also see sniffDelimiter
 const csv = try csv_read.read(alloc, file.reader(), ',');
-const first_row = csv.row(0);
+const headers = csv.row(0);
 
 // natsort - sort strings the way humans expect
 std.mem.sortUnstable([]const u8, files, {}, struct {
@@ -40,7 +40,7 @@ var re = try regex.Regex.init(alloc, "(cat|d\\w+g)\\b", .{});
 const md = (try re.match("hotdog")) orelse unreachable;
 const animal = md.subexp(1).?;
 
-// sprintf - format with runtime width and padding using sprintf syntax
+// sprintf - format with sprintf syntax, at runtime
 const msg = try sprintf.sprintf(alloc, "%08b %-5s", .{ 13, ">" });
 
 // termbg - detect whether the terminal background is dark
