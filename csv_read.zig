@@ -99,8 +99,13 @@ const CsvReader = struct {
 
     // Parse the full input and transfer ownership into a CsvData value.
     fn read(self: *Self, in: *std.Io.Reader) !CsvData {
-        // eof?
-        while (try self.peekByte(in) != null) try self.parseRow(in);
+        while (true) {
+            _ = in.peek(1) catch |err| switch (err) {
+                error.EndOfStream => break,
+                else => |e| return e,
+            };
+            try self.parseRow(in);
+        }
 
         // rows => owned
         const rows = try self.rows.toOwnedSlice(self.alloc);
@@ -146,7 +151,10 @@ const CsvReader = struct {
     // Parse an unquoted field.
     fn unquoted(self: *Self, in: *std.Io.Reader) !bool {
         while (true) {
-            const ch = try self.readByte(in) orelse return true;
+            const ch = in.takeByte() catch |err| switch (err) {
+                error.EndOfStream => return true,
+                else => |e| return e,
+            };
             if (ch == '"') return error.InvalidQuote;
             if (ch == '\r' or ch == '\n') {
                 if (ch == '\r') _ = try self.eatByte(in, '\n');
@@ -160,7 +168,10 @@ const CsvReader = struct {
     // Parse quoted field
     fn quoted(self: *Self, in: *std.Io.Reader) !bool {
         while (true) {
-            const ch = try self.readByte(in) orelse return error.UnexpectedEndOfFile;
+            const ch = in.takeByte() catch |err| switch (err) {
+                error.EndOfStream => return error.UnexpectedEndOfFile,
+                else => |e| return e,
+            };
             if (ch != '"') {
                 try self.buf.append(self.alloc, ch);
                 continue;
@@ -175,7 +186,10 @@ const CsvReader = struct {
             }
 
             // end of field - next byte must be delim or EOF
-            const nxt = try self.readByte(in) orelse return true;
+            const nxt = in.takeByte() catch |err| switch (err) {
+                error.EndOfStream => return true,
+                else => |e| return e,
+            };
             if (nxt == '\r' or nxt == '\n') {
                 if (nxt == '\r') _ = try self.eatByte(in, '\n');
                 return true;
@@ -187,33 +201,14 @@ const CsvReader = struct {
         }
     }
 
-    //
-    // read/peek/eat
-    //
-
-    // Return the next byte without consuming it.
-    fn peekByte(self: *Self, in: *std.Io.Reader) !?u8 {
-        _ = self;
-        const bytes = in.peek(1) catch |err| switch (err) {
-            error.EndOfStream => return null,
-            else => |e| return e,
-        };
-        return bytes[0];
-    }
-
-    // Return the next byte from the reader, or null at EOF.
-    fn readByte(self: *Self, in: *std.Io.Reader) !?u8 {
-        _ = self;
-        return in.takeByte() catch |err| switch (err) {
-            error.EndOfStream => null,
-            else => |e| return e,
-        };
-    }
-
     // If next byte == ch, eat it and return true.
     fn eatByte(self: *Self, in: *std.Io.Reader, ch: u8) !bool {
-        const nxt = try self.peekByte(in);
-        if (nxt != ch) return false;
+        _ = self;
+        const bytes = in.peek(1) catch |err| switch (err) {
+            error.EndOfStream => return false,
+            else => |e| return e,
+        };
+        if (bytes[0] != ch) return false;
         in.toss(1);
         return true;
     }
