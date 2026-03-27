@@ -2,17 +2,17 @@
 /// characters.
 
 // Parse CSV from a reader and return owned table data.
-pub fn read(alloc: std.mem.Allocator, reader: anytype, delimiter: u8) !CsvData {
+pub fn read(alloc: std.mem.Allocator, reader: std.Io.Reader, delimiter: u8) !CsvData {
+    var in = reader;
     var csv_reader = CsvReader.init(alloc, delimiter);
     defer csv_reader.deinit();
-    return csv_reader.read(reader);
+    return csv_reader.read(&in);
 }
 
 // Parse `bytes` as CSV input and return owned table data. See sniffDelimiter
 // if you want to detect the correct delimiter.
 pub fn readBuf(alloc: std.mem.Allocator, bytes: []const u8, delimiter: u8) !CsvData {
-    var stream = std.io.fixedBufferStream(bytes);
-    return read(alloc, stream.reader(), delimiter);
+    return read(alloc, .fixed(bytes), delimiter);
 }
 
 const sniffDelims = [_]u8{ ',', '\t', ';', '|' };
@@ -82,7 +82,6 @@ const CsvReader = struct {
     rows: std.ArrayList(Span) = .empty,
     fields: std.ArrayList(Span) = .empty,
     buf: std.ArrayList(u8) = .empty,
-    pending: ?u8 = null,
 
     const Self = @This();
 
@@ -99,7 +98,7 @@ const CsvReader = struct {
     }
 
     // Parse the full input and transfer ownership into a CsvData value.
-    fn read(self: *Self, in: anytype) !CsvData {
+    fn read(self: *Self, in: *std.Io.Reader) !CsvData {
         // eof?
         while (try self.peekByte(in) != null) try self.parseRow(in);
 
@@ -122,7 +121,7 @@ const CsvReader = struct {
     }
 
     // Parse one row from the current reader position and append it.
-    fn parseRow(self: *Self, in: anytype) !void {
+    fn parseRow(self: *Self, in: *std.Io.Reader) !void {
         const row_start = self.fields.items.len;
         while (true) {
             const buf_start = self.buf.items.len;
@@ -140,12 +139,12 @@ const CsvReader = struct {
     }
 
     // Parse one field until the next delimiter, row end, or EOF.
-    fn parseField(self: *Self, in: anytype) !bool {
+    fn parseField(self: *Self, in: *std.Io.Reader) !bool {
         return if (try self.eatByte(in, '"')) self.quoted(in) else self.unquoted(in);
     }
 
-    // Parse unquoted field
-    fn unquoted(self: *Self, in: anytype) !bool {
+    // Parse an unquoted field.
+    fn unquoted(self: *Self, in: *std.Io.Reader) !bool {
         while (true) {
             const ch = try self.readByte(in) orelse return true;
             if (ch == '"') return error.InvalidQuote;
@@ -159,7 +158,7 @@ const CsvReader = struct {
     }
 
     // Parse quoted field
-    fn quoted(self: *Self, in: anytype) !bool {
+    fn quoted(self: *Self, in: *std.Io.Reader) !bool {
         while (true) {
             const ch = try self.readByte(in) orelse return error.UnexpectedEndOfFile;
             if (ch != '"') {
@@ -193,31 +192,29 @@ const CsvReader = struct {
     //
 
     // Return the next byte without consuming it.
-    fn peekByte(self: *Self, in: anytype) !?u8 {
-        if (self.pending == null) {
-            self.pending = in.readByte() catch |err| switch (err) {
-                error.EndOfStream => null,
-            };
-        }
-        return self.pending;
+    fn peekByte(self: *Self, in: *std.Io.Reader) !?u8 {
+        _ = self;
+        const bytes = in.peek(1) catch |err| switch (err) {
+            error.EndOfStream => return null,
+            else => |e| return e,
+        };
+        return bytes[0];
     }
 
     // Return the next byte from the reader, or null at EOF.
-    fn readByte(self: *Self, in: anytype) !?u8 {
-        if (self.pending) |byte| {
-            self.pending = null;
-            return byte;
-        }
-        return in.readByte() catch |err| switch (err) {
+    fn readByte(self: *Self, in: *std.Io.Reader) !?u8 {
+        _ = self;
+        return in.takeByte() catch |err| switch (err) {
             error.EndOfStream => null,
+            else => |e| return e,
         };
     }
 
-    // If next byte == ch, eat it and return true
-    fn eatByte(self: *Self, in: anytype, ch: u8) !bool {
+    // If next byte == ch, eat it and return true.
+    fn eatByte(self: *Self, in: *std.Io.Reader, ch: u8) !bool {
         const nxt = try self.peekByte(in);
         if (nxt != ch) return false;
-        self.pending = null;
+        in.toss(1);
         return true;
     }
 };
@@ -267,8 +264,8 @@ test "readBuf" {
 }
 
 test "read" {
-    var stream = std.io.fixedBufferStream("a,b\nc,d\n");
-    const data = try read(test_alloc, stream.reader(), ',');
+    const reader: std.Io.Reader = .fixed("a,b\nc,d\n");
+    const data = try read(test_alloc, reader, ',');
     defer data.deinit(test_alloc);
     try testing.expectEqual(@as(usize, 2), data.rowCount());
     try testing.expectEqualStrings("c", data.row(1)[0]);
